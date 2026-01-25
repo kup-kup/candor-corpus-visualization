@@ -1,13 +1,14 @@
 import os
 import json
 import pandas as pd
+import sys
 
 class Gatherer:
     def __init__(self):
         self.root = os.getcwd()
 
         # check for root/data directory
-        self.data_path = os.path.join(self.root, 'data')
+        self.data_path = os.path.join(self.root, 'temp')
         if not os.path.exists(self.data_path):
             raise FileNotFoundError(f"'data' directory not found in {self.root}")
     
@@ -23,23 +24,28 @@ class Gatherer:
             if verbose:            
                 print(f"Processing directory: {entry.name}")
 
-            if action:
-                res = pd.concat([res, pd.read_csv(os.path.join(entry.path, 'data.csv'))], ignore_index=True)
+            try:
+                if action:
+                    res = pd.concat([res, action(entry)], ignore_index=True)
+            except Exception as e:
+                print(f"Error processing {entry.name}: {e}")
                 
         return res
 
-    def get_metadata(self) -> list[dict]:
-        pass
-        # metadata_file = os.path.join(self.data_path, 'metadata.json')
-        # if not os.path.exists(metadata_file):
-        #     raise FileNotFoundError(f"'metadata.json' not found in {self.data_path}")
+    def get_metadata_df(self, verbose) -> pd.DataFrame:
 
-        # with open(metadata_file, 'r') as f:
-        #     metadata = json.load(f)
+        def _action(entry):
+            metadata_path = os.path.join(entry.path, 'metadata.json')
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                return pd.DataFrame([metadata])
+            return pd.DataFrame()
+    
+        return self._iterate(_action, verbose)
         
-        # return metadata
-
 
 if __name__ == "__main__":
     gatherer = Gatherer()
-    print(gatherer._iterate(len))
+    data = gatherer.get_metadata_df(verbose=True)
+    print(data.info())
