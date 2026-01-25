@@ -4,7 +4,7 @@ import pandas as pd
 import sys
 from time import perf_counter
 
-class time_perf():
+class time_perf:
     def __init__(self, name=None):
         self.name = name
         self.s = 0
@@ -33,7 +33,7 @@ class Gatherer:
                 continue
             yield entry
 
-    def get_metadata_df(self, verbose) -> pd.DataFrame:
+    def get_metadata_df(self, verbose=False) -> pd.DataFrame:
         """get metadata, return pd.DataFrame"""
         res = pd.DataFrame()
         for entry in self._iterate():
@@ -59,5 +59,5 @@ class Gatherer:
 if __name__ == "__main__":
     gatherer = Gatherer()
     with time_perf("Metadata Gathering"): # ~ 1.5s
-        data = gatherer.get_metadata_df(verbose=False)
+        data = gatherer.get_metadata_df()
     print(data.info())
