@@ -56,9 +56,29 @@ class Gatherer:
     
         return res
 
+    def get_survey_df(self, verbose=False) -> pd.DataFrame:
+        """get survey results, return pd.DataFrame"""
+        res = pd.DataFrame()
+        for entry in self._iterate():
+            survey_path = os.path.join(entry.path, 'survey.csv')
+    
+            # skip if no survey
+            if not os.path.exists(survey_path):
+                if verbose:
+                    print(f"Survey not found for: {entry.name}")
+                continue
+
+            # read survey
+            entry_df = pd.read_csv(survey_path)
+            res = pd.concat([res, entry_df], ignore_index=True)
+
+            if verbose:
+                print(f"Processed: {entry.name}")
+                
+        return res
+
 if __name__ == "__main__":
     gatherer = Gatherer()
     with time_perf("Metadata Gathering"): # ~ 1.5s
         data = gatherer.get_metadata_df()
     print(data.info())
-    '''dfsdfsfdsfdsfdsfs'''
