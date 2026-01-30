@@ -16,7 +16,6 @@ class time_perf:
         if self.name:
             print(self.name, end=': ')
         print(perf_counter()-self.s)
-
 class Gatherer:
     def __init__(self, data_path='data'):
         self.root = os.getcwd()
