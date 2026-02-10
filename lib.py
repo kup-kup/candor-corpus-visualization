@@ -79,7 +79,8 @@ class Gatherer:
     
     def get_audio_video_features_df(self, verbose=False) -> pd.DataFrame:
         """get audio/video features, return pd.DataFrame"""
-        res = pd.DataFrame()
+        dfs = [] # 1. ใช้ list ว่าง (เร็วกว่า)
+        
         for entry in self._iterate():
             features_path = os.path.join(entry.path, 'audio_video_features.csv')
     
@@ -88,13 +89,22 @@ class Gatherer:
                     print(f"Audio/Video features not found for: {entry.name}")
                 continue
 
-            entry_df = pd.read_csv(features_path)
-            res = pd.concat([res, entry_df], ignore_index=True)
+            # 2. อ่านไฟล์แล้วเก็บลง list ก่อน
+            try:
+                entry_df = pd.read_csv(features_path)
+                dfs.append(entry_df) 
+            except Exception as e:
+                print(f"Error reading {entry.name}: {e}")
+                continue
 
             if verbose:
                 print(f"Processed: {entry.name}")
-                
-        return res
+        
+        # 3. รวมร่างทีเดียวตอนจบ
+        if dfs:
+            return pd.concat(dfs, ignore_index=True)
+        else:
+            return pd.DataFrame()
 
 if __name__ == "__main__":
     gatherer = Gatherer()
