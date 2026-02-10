@@ -76,9 +76,33 @@ class Gatherer:
                 print(f"Processed: {entry.name}")
                 
         return res
+    
+    def get_audio_video_features_df(self, verbose=False) -> pd.DataFrame:
+        """get audio/video features, return pd.DataFrame"""
+        res = pd.DataFrame()
+        for entry in self._iterate():
+            features_path = os.path.join(entry.path, 'audio_video_features.csv')
+    
+            if not os.path.exists(features_path):
+                if verbose:
+                    print(f"Audio/Video features not found for: {entry.name}")
+                continue
+
+            entry_df = pd.read_csv(features_path)
+            res = pd.concat([res, entry_df], ignore_index=True)
+
+            if verbose:
+                print(f"Processed: {entry.name}")
+                
+        return res
 
 if __name__ == "__main__":
     gatherer = Gatherer()
     with time_perf("Metadata Gathering"): # ~ 1.5s
         data = gatherer.get_metadata_df()
     print(data.info())
+
+    print("--- 2. Audio/Video Features ---")
+    with time_perf("AV Features Gathering"):
+        av_data = gatherer.get_audio_video_features_df()
+    print(av_data.info())
