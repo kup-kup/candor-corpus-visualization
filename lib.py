@@ -110,7 +110,7 @@ class Gatherer:
 
             # read survey
             entry_df = pd.read_csv(survey_path)
-            dfs.append(entry_df)
+            res = pd.concat([res, entry_df], ignore_index=True)
 
             if verbose:
                 print(f"Processed: {entry.name}")
