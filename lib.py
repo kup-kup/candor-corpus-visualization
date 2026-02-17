@@ -16,22 +16,56 @@ class time_perf:
         if self.name:
             print(self.name, end=': ')
         print(perf_counter()-self.s)
-
 class Gatherer:
-    def __init__(self):
+    def __init__(self, data_path='data'):
         self.root = os.getcwd()
 
         # check for root/data directory
-        self.data_path = os.path.join(self.root, 'data')
+        self.data_path = os.path.join(self.root, data_path)
         if not os.path.exists(self.data_path):
             raise FileNotFoundError(f"'data' directory not found in {self.root}")
     
-    def _iterate(self):
+    ###################
+    # internal method #
+    ###################
+    
+    def _iterate(self, filter=None):
         """main method to iterate through all conversations folders"""
+
+        if filter:
+            filter = set(filter)
+
         for entry in os.scandir(self.data_path):
             if not entry.is_dir() or len(entry.name) != 36:
                 continue
+            if filter and entry.name not in filter:
+                continue
             yield entry
+    
+    def _get_transcription(self, entry) -> tuple:
+        """return audiophile, backbiter, cliffhanger as pd.DataFrame"""
+        transcription_path = os.path.join(entry.path, 'transcription')
+
+        # skip if no transcription
+        if not os.path.exists(transcription_path) or not os.path.isdir(transcription_path):
+            return None, None, None
+
+        # define read options
+        read_opts = {
+            "dtype": {"utterance": str},
+            "keep_default_na": False,  # prevent 'None' from becoming NaN
+            "na_values": [""],         # treat only empty strings as NA
+        }
+
+        # read transcription
+        audiophile_df = pd.read_csv(os.path.join(transcription_path, 'transcript_audiophile.csv'), **read_opts)
+        backbiter_df = pd.read_csv(os.path.join(transcription_path, 'transcript_backbiter.csv'), **read_opts)
+        cliffhanger_df = pd.read_csv(os.path.join(transcription_path, 'transcript_cliffhanger.csv'), **read_opts)
+        return audiophile_df, backbiter_df, cliffhanger_df
+
+    ##################
+    # public methods #
+    ##################
 
     def get_metadata_df(self, verbose=False) -> pd.DataFrame:
         """get metadata, return pd.DataFrame"""
@@ -63,8 +97,8 @@ class Gatherer:
         return pd.DataFrame()
 
     def get_survey_df(self, verbose=False) -> pd.DataFrame:
-        """get survey results, return pd.DataFrame"""
-        dfs = [] # เปลี่ยนมาใช้ list เพื่อความเร็ว
+        """get survey results, return pd.DataFrame. takes ~ 2s"""
+        res = pd.DataFrame()
         for entry in self._iterate():
             survey_path = os.path.join(entry.path, 'survey.csv')
     
@@ -81,47 +115,110 @@ class Gatherer:
             if verbose:
                 print(f"Processed: {entry.name}")
                 
-        if dfs:
-            return pd.concat(dfs, ignore_index=True)
-        return pd.DataFrame()
-    
-    def get_audio_video_features_df(self, verbose=False) -> pd.DataFrame:
-        """get audio/video features, return pd.DataFrame"""
-        dfs = [] 
-        
+        return res
+
+    def get_transcriptions_info(self, verbose=False) -> pd.DataFrame:
+        """get number of turns, average gaps between turns, average length of turns, 
+        average words per turn, number of questions asked, number of turns ending with a question,
+        number of overlaps, grouped by user. Takes ~ 2 mins"""
+
+        cols = [
+            'conversation_id', 'type', 'user_id', 'num_turns', 'avg_gap_between_turns', 
+            'avg_length_of_turns', 'avg_words_per_turn', 'num_questions_asked', 
+            'num_turns_ending_with_question', 'num_overlaps'
+        ]
+        res = pd.DataFrame(columns=cols)
         for entry in self._iterate():
-            features_path = os.path.join(entry.path, 'audio_video_features.csv')
+            zipper = zip(['audiophile', 'backbiter', 'cliffhanger'], self._get_transcription(entry))
+            for t, df in zipper:
+                if df is None:
+                    if verbose:
+                        print(f"Transcription not found for: {entry.name} - {t}")
+                    continue
+
+                # group by user_id
+                grouped = df.groupby('speaker')
+                for user_id, group in grouped:
+                    num_turns = len(group)
+                    avg_gap_between_turns = group['interval'].mean()
+                    avg_length_of_turns = group['delta'].mean()
+                    avg_words_per_turn = group['n_words'].mean()
+                    num_questions_asked = group['questions'].sum()
+                    num_turns_ending_with_question = group['end_question'].sum()
+                    num_overlaps = group['overlap'].sum()
+
+                    row = {
+                        'conversation_id': entry.name,
+                        'type': t,
+                        'user_id': user_id,
+                        'num_turns': num_turns,
+                        'avg_gap_between_turns': avg_gap_between_turns,
+                        'avg_length_of_turns': avg_length_of_turns,
+                        'avg_words_per_turn': avg_words_per_turn,
+                        'num_questions_asked': num_questions_asked,
+                        'num_turns_ending_with_question': num_turns_ending_with_question,
+                        'num_overlaps': num_overlaps
+                    }
+
+                    res = pd.concat([res, pd.DataFrame([row])], ignore_index=True)
     
-            if not os.path.exists(features_path):
-                if verbose:
-                    print(f"Audio/Video features not found for: {entry.name}")
-                continue
+        return res
 
-            try:
-                entry_df = pd.read_csv(features_path)
-                
-                # --- เพิ่มคอลัมน์ convo_id ตรงนี้ ---
-                # นำชื่อ Folder (entry.name) มาใส่เป็นคอลัมน์ใหม่ให้ทุก Row
-                entry_df['convo_id'] = entry.name
-                
-                dfs.append(entry_df) 
-            except Exception as e:
-                print(f"Error reading {entry.name}: {e}")
-                continue
+    def check_transcriptions_complete(self, verbose=False):
+        """check conversations missing values"""
+        cols = ['conversation_id', 'type', 'description', 'row']
+        res = pd.DataFrame(columns=cols) 
 
+        cnt = 0
+        for entry in self._iterate():
+            cnt += 1
             if verbose:
-                print(f"Processed: {entry.name}")
-        
-        if dfs:
-            return pd.concat(dfs, ignore_index=True)
-        else:
-            return pd.DataFrame()
+                print(f"Checking no {cnt}: {entry.name}")
+
+            zipper = zip(['audiophile', 'backbiter', 'cliffhanger'], self._get_transcription(entry))
+            for t, df in zipper:
+                to_concat = []
+                if df is None:
+                    res = pd.concat([res, pd.DataFrame([{
+                        'conversation_id': entry.name,
+                        'type': t,
+                        'description': 'missing transcription file'
+                    }])], ignore_index=True)
+                    if verbose:
+                        print(f"Transcription not found for: {entry.name} - {t}")
+                    continue
+                
+                # drop columns with all expected nulls for backbiter
+                if t == 'backbiter':
+                    df = df.drop(columns=['backchannel', 'backchannel_speaker', 'backchannel_start', 'backchannel_stop'])
+
+                if df.iloc[0].isnull().sum() != 1:
+                    to_concat.append(pd.DataFrame([{
+                        'conversation_id': entry.name,
+                        'type': t,
+                        'description': 'row 0 should have only 1 null value',
+                        'row': 0
+                    }]))
+                
+                df = df.drop(index=0)
+
+                for idx, row in df.iterrows():
+                    if row.isnull().any():
+                        to_concat.append(pd.DataFrame([{
+                            'conversation_id': entry.name,
+                            'type': t,
+                            'description': 'missing value(s) in row',
+                            'row': idx
+                        }]))
+                
+                if to_concat:
+                    res = pd.concat([res] + to_concat, ignore_index=True)
+
+        return res
 
 if __name__ == "__main__":
-    gatherer = Gatherer()
-    
-    print("--- 1. Metadata ---")
-    with time_perf("Metadata Gathering"): 
+    gatherer = Gatherer('temp')
+    with time_perf("Metadata Gathering"): # ~ 1.5s
         data = gatherer.get_metadata_df()
     print(data.info() if not data.empty else "No Data")
 
