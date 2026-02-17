@@ -35,7 +35,7 @@ class Gatherer:
 
     def get_metadata_df(self, verbose=False) -> pd.DataFrame:
         """get metadata, return pd.DataFrame"""
-        res = pd.DataFrame()
+        dfs = [] # เปลี่ยนมาใช้ list เพื่อความเร็ว
         for entry in self._iterate():
             metadata_path = os.path.join(entry.path, 'metadata.json')
 
@@ -48,17 +48,23 @@ class Gatherer:
             # read metadata
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
+            
             entry_df = pd.DataFrame([metadata])
-            res = pd.concat([res, entry_df], ignore_index=True)
+            # สามารถเพิ่ม convo_id ให้ metadata ด้วยก็ได้ถ้าต้องการ
+            entry_df['convo_id'] = entry.name 
+            
+            dfs.append(entry_df)
 
             if verbose:
                 print(f"Processed: {entry.name}")
     
-        return res
+        if dfs:
+            return pd.concat(dfs, ignore_index=True)
+        return pd.DataFrame()
 
     def get_survey_df(self, verbose=False) -> pd.DataFrame:
         """get survey results, return pd.DataFrame"""
-        res = pd.DataFrame()
+        dfs = [] # เปลี่ยนมาใช้ list เพื่อความเร็ว
         for entry in self._iterate():
             survey_path = os.path.join(entry.path, 'survey.csv')
     
@@ -70,16 +76,18 @@ class Gatherer:
 
             # read survey
             entry_df = pd.read_csv(survey_path)
-            res = pd.concat([res, entry_df], ignore_index=True)
+            dfs.append(entry_df)
 
             if verbose:
                 print(f"Processed: {entry.name}")
                 
-        return res
+        if dfs:
+            return pd.concat(dfs, ignore_index=True)
+        return pd.DataFrame()
     
     def get_audio_video_features_df(self, verbose=False) -> pd.DataFrame:
         """get audio/video features, return pd.DataFrame"""
-        dfs = [] # 1. ใช้ list ว่าง (เร็วกว่า)
+        dfs = [] 
         
         for entry in self._iterate():
             features_path = os.path.join(entry.path, 'audio_video_features.csv')
@@ -89,9 +97,13 @@ class Gatherer:
                     print(f"Audio/Video features not found for: {entry.name}")
                 continue
 
-            # 2. อ่านไฟล์แล้วเก็บลง list ก่อน
             try:
                 entry_df = pd.read_csv(features_path)
+                
+                # --- เพิ่มคอลัมน์ convo_id ตรงนี้ ---
+                # นำชื่อ Folder (entry.name) มาใส่เป็นคอลัมน์ใหม่ให้ทุก Row
+                entry_df['convo_id'] = entry.name
+                
                 dfs.append(entry_df) 
             except Exception as e:
                 print(f"Error reading {entry.name}: {e}")
@@ -100,7 +112,6 @@ class Gatherer:
             if verbose:
                 print(f"Processed: {entry.name}")
         
-        # 3. รวมร่างทีเดียวตอนจบ
         if dfs:
             return pd.concat(dfs, ignore_index=True)
         else:
@@ -108,11 +119,18 @@ class Gatherer:
 
 if __name__ == "__main__":
     gatherer = Gatherer()
-    with time_perf("Metadata Gathering"): # ~ 1.5s
+    
+    print("--- 1. Metadata ---")
+    with time_perf("Metadata Gathering"): 
         data = gatherer.get_metadata_df()
-    print(data.info())
+    print(data.info() if not data.empty else "No Data")
 
-    print("--- 2. Audio/Video Features ---")
+    print("\n--- 2. Audio/Video Features ---")
     with time_perf("AV Features Gathering"):
         av_data = gatherer.get_audio_video_features_df()
-    print(av_data.info())
+    print(av_data.info() if not av_data.empty else "No Data")
+    
+    # ดูตัวอย่างข้อมูลเพื่อให้เห็นว่ามี convo_id แล้ว
+    if not av_data.empty:
+        print("\nตัวอย่างข้อมูล (head):")
+        print(av_data[['convo_id']].head())
