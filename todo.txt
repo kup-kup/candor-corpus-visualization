@@ -1,2 +1,0 @@
-- extract from survey.csv 
-- average survey result 
