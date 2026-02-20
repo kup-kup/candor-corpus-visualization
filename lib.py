@@ -16,7 +16,7 @@ class time_perf:
         if self.name:
             print(self.name, end=': ')
         print(perf_counter()-self.s)
-        
+
 class Gatherer:
     def __init__(self, data_path='data'):
         self.root = os.getcwd()
@@ -216,6 +216,38 @@ class Gatherer:
                     res = pd.concat([res] + to_concat, ignore_index=True)
 
         return res
+    
+    def get_audio_video_features_df(self, verbose=False) -> pd.DataFrame:
+        """get audio/video features, return pd.DataFrame"""
+        dfs = [] 
+        
+        for entry in self._iterate():
+            features_path = os.path.join(entry.path, 'audio_video_features.csv')
+    
+            if not os.path.exists(features_path):
+                if verbose:
+                    print(f"Audio/Video features not found for: {entry.name}")
+                continue
+
+            try:
+                entry_df = pd.read_csv(features_path)
+                
+                # --- เพิ่มคอลัมน์ convo_id ตรงนี้ ---
+                # นำชื่อ Folder (entry.name) มาใส่เป็นคอลัมน์ใหม่ให้ทุก Row
+                entry_df['convo_id'] = entry.name
+                
+                dfs.append(entry_df) 
+            except Exception as e:
+                print(f"Error reading {entry.name}: {e}")
+                continue
+
+            if verbose:
+                print(f"Processed: {entry.name}")
+        
+        if dfs:
+            return pd.concat(dfs, ignore_index=True)
+        else:
+            return pd.DataFrame()
 
 if __name__ == "__main__":
     gatherer = Gatherer('temp')
